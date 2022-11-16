@@ -1,0 +1,98 @@
+variables:
+  PHASE: BUILD
+before_script:
+  #- apk add --no-cache curl jq py-pip git virt-manager
+  ## Install ssh-agent
+  - 'which ssh-agent || ( apt-get update -y && apt-get install -qq openssh-client -y)'
+  #- usermod --append --groups libvirt `whoami`
+  - eval $(ssh-agent -s)
+  - mkdir -p ~/.ssh
+  - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+  - chmod 700 ~/.ssh/id_rsa
+  - ssh-add ~/.ssh/id_rsa
+  ##
+  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > /etc/ssh/ssh_config'
+  #- echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > /etc/ssh/ssh_config
+  ## Create the SSH directory and give it the right permissions
+  #- ssh-keyscan 192.168.1.108 >> ~/.ssh/known_hosts
+  - touch /root/.ssh/know_hosts
+  - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+  - chmod 644 ~/.ssh/known_hosts
+  - cat ~/.ssh/known_hosts
+  ###
+  - ls ~/.ssh/
+  - chmod -R 777 .terraform
+  #### test conection ssh
+  - ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa oem@192.168.1.108 hostname
+before_script:
+  #- apk add --no-cache curl jq py-pip git virt-manager
+  ## Install ssh-agent
+  - 'which ssh-agent || ( apt-get update -y && apt-get install -qq openssh-client -y)'
+  #- usermod --append --groups libvirt `whoami`
+  - eval $(ssh-agent -s)
+  - mkdir -p ~/.ssh
+  - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+  - chmod 700 ~/.ssh/id_rsa
+  - ssh-add ~/.ssh/id_rsa
+  ##
+  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > /etc/ssh/ssh_config'
+  #- echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > /etc/ssh/ssh_config
+  ## Create the SSH directory and give it the right permissions
+  #- ssh-keyscan 192.168.1.108 >> ~/.ssh/known_hosts
+  - touch ~/.ssh/known_hosts
+  - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+  - chmod 644 ~/.ssh/known_hosts
+  ###
+  - ls ~/.ssh/
+  - chmod -R 777 .terraform
+  #### test conection ssh
+  - ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa oem@192.168.1.108 hostname
+  - cat /root/.ssh/known_hosts
+stages:
+  - plan
+  - deploy
+Plan:
+  image:
+    #name: hashicorp/terraform:0.14.4
+    name: hashicorp/terraform:latest
+    entrypoint: [""]
+  stage: plan
+  artifacts:
+    paths:
+    - ol7
+    expire_in: 2 week
+  script:
+    - terraform --version
+    - terraform init
+    - terraform plan -input=false -out=plan.bin
+  only:
+    variables:
+      - $PHASE == "BUILD"
+Apply:
+  image:
+    name: hashicorp/terraform:latest
+    entrypoint: [""]
+  when: manual
+  stage: deploy
+  script:
+    - terraform init
+    - terraform apply -auto-approve -input=false plan.bin
+  only:
+    variables:
+      - $PHASE == "BUILD"
+  environment:
+    name: snunv
+Destroy:
+  image:
+    name: hashicorp/terraform:latest
+    entrypoint: [""]
+  stage: deploy
+  script:
+    - terraform init
+    - terraform destroy -auto-approve
+  only:
+    variables:
+      - $PHASE == "DESTROY"
+  environment:
+    name: snunv
+    action: stop
