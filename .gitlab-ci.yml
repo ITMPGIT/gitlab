@@ -1,9 +1,11 @@
 variables:
+  TF_ROOT: ${CI_PROJECT_DIR}/
+  TF_ADDRESS: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/tfstate
   PHASE: BUILD
 before_script:
-  #- apk add --no-cache curl jq py-pip git virt-manager
+  - apk add --no-cache curl jq py-pip git cdrkit go
   ## Install ssh-agent
-  - 'which ssh-agent || ( apt-get update -y && apt-get install -qq openssh-client -y)'
+  - 'which ssh-agent || ( apt-get update -y && apt-get install -qq openssh-client cloud-init -y)'
   #- usermod --append --groups libvirt `whoami`
   - eval $(ssh-agent -s)
   - mkdir -p ~/.ssh
@@ -24,33 +26,31 @@ before_script:
   - chmod -R 777 .terraform
   #### test conection ssh
   - ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa oem@192.168.1.108 hostname
-before_script:
-  #- apk add --no-cache curl jq py-pip git virt-manager
-  ## Install ssh-agent
-  - 'which ssh-agent || ( apt-get update -y && apt-get install -qq openssh-client -y)'
-  #- usermod --append --groups libvirt `whoami`
-  - eval $(ssh-agent -s)
-  - mkdir -p ~/.ssh
-  - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-  - chmod 700 ~/.ssh/id_rsa
-  - ssh-add ~/.ssh/id_rsa
-  ##
-  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > /etc/ssh/ssh_config'
-  #- echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > /etc/ssh/ssh_config
-  ## Create the SSH directory and give it the right permissions
-  #- ssh-keyscan 192.168.1.108 >> ~/.ssh/known_hosts
-  - touch ~/.ssh/known_hosts
-  - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-  - chmod 644 ~/.ssh/known_hosts
-  ###
-  - ls ~/.ssh/
-  - chmod -R 777 .terraform
-  #### test conection ssh
-  - ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa oem@192.168.1.108 hostname
-  - cat /root/.ssh/known_hosts
+  ### list ip address kvm created
+  #- ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa oem@192.168.1.108 virsh net-dhcp-leases default
 stages:
+  - validate
   - plan
   - deploy
+Validate:
+  image:
+    #name: hashicorp/terraform:0.14.4
+    name: hashicorp/terraform:latest
+    entrypoint: [""]
+  cache:
+   
+    paths:
+      - .terraform
+  stage: validate
+  artifacts:
+    paths:
+    - ol7
+  script:
+    - terraform --version
+    - terraform validate
+  only:
+    variables:
+      - $PHASE == "BUILD"
 Plan:
   image:
     #name: hashicorp/terraform:0.14.4
@@ -64,7 +64,7 @@ Plan:
   script:
     - terraform --version
     - terraform init
-    - terraform plan -input=false -out=plan.bin
+    - terraform plan -input=false 
   only:
     variables:
       - $PHASE == "BUILD"
@@ -76,7 +76,7 @@ Apply:
   stage: deploy
   script:
     - terraform init
-    - terraform apply -auto-approve -input=false plan.bin
+    - terraform apply -auto-approve -input=false 
   only:
     variables:
       - $PHASE == "BUILD"
@@ -90,6 +90,7 @@ Destroy:
   script:
     - terraform init
     - terraform destroy -auto-approve
+    - terraform refresh
   only:
     variables:
       - $PHASE == "DESTROY"
